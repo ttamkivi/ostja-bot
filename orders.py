@@ -25,6 +25,17 @@ class OrderManager:
                     raw JSON
                 )
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS addresses (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    label TEXT NOT NULL,
+                    lat REAL NOT NULL,
+                    lon REAL NOT NULL,
+                    address_text TEXT,
+                    is_active INTEGER DEFAULT 0,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
             conn.commit()
 
     def set_pending(self, chat_id: int, order: dict):
@@ -64,6 +75,51 @@ class OrderManager:
             }
             for r in rows
         ]
+
+    # ─── Aadressid ────────────────────────────────────────────────────────────
+
+    def save_address(self, label: str, lat: float, lon: float, address_text: str = "") -> int:
+        """Salvesta uus aadress. Tagastab id."""
+        with sqlite3.connect(DB_PATH) as conn:
+            cur = conn.execute(
+                "INSERT INTO addresses (label, lat, lon, address_text) VALUES (?,?,?,?)",
+                (label, lat, lon, address_text)
+            )
+            conn.commit()
+            return cur.lastrowid
+
+    def set_active_address(self, address_id: int):
+        """Seab aktiivse tarneaadressi."""
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.execute("UPDATE addresses SET is_active = 0")
+            conn.execute("UPDATE addresses SET is_active = 1 WHERE id = ?", (address_id,))
+            conn.commit()
+
+    def get_active_address(self) -> dict | None:
+        """Saab aktiivse tarneaadressi."""
+        with sqlite3.connect(DB_PATH) as conn:
+            row = conn.execute(
+                "SELECT id, label, lat, lon, address_text FROM addresses WHERE is_active = 1 ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        if row:
+            return {"id": row[0], "label": row[1], "lat": row[2], "lon": row[3], "address_text": row[4]}
+        return None
+
+    def get_all_addresses(self) -> list[dict]:
+        """Kõik salvestatud aadressid."""
+        with sqlite3.connect(DB_PATH) as conn:
+            rows = conn.execute(
+                "SELECT id, label, lat, lon, address_text, is_active FROM addresses ORDER BY id DESC"
+            ).fetchall()
+        return [
+            {"id": r[0], "label": r[1], "lat": r[2], "lon": r[3], "address_text": r[4], "is_active": bool(r[5])}
+            for r in rows
+        ]
+
+    def delete_address(self, address_id: int):
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.execute("DELETE FROM addresses WHERE id = ?", (address_id,))
+            conn.commit()
 
     def get_monthly_spend(self) -> dict:
         """Kulutused sel kuul, jagatud platvormi kaupa."""
